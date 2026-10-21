@@ -24,6 +24,7 @@ afterEach(async () => {
 function provider(fetchPage?: CollectionProvider['fetchPage']): CollectionProvider {
   return {
     name: 'douban',
+    label: '豆瓣',
     pageSize: 50,
     fetchPage: fetchPage ?? (async (_u, status) => ({ items: status === 'wish' ? [item('1')] : [], total: status === 'wish' ? 1 : 0 })),
   };

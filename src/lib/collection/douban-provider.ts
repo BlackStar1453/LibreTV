@@ -66,6 +66,7 @@ export function extractDoubanUserId(input: string): string | null {
 export function createDoubanProvider(fetchJson: (url: string) => Promise<unknown>): CollectionProvider {
   return {
     name: 'douban',
+    label: '豆瓣',
     pageSize: PAGE_SIZE,
     async fetchPage(userId, status, start) {
       const sp = new URLSearchParams({

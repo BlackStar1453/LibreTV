@@ -34,7 +34,7 @@ async function paginate(
       seen.add(it.id);
       out.push(it);
     }
-    if (shouldStop(res.items) || res.items.length === 0 || start + provider.pageSize >= res.total) break;
+    if (shouldStop(res.items) || (res.rawCount ?? res.items.length) === 0 || start + provider.pageSize >= res.total) break;
   }
   return out;
 }
@@ -85,12 +85,12 @@ export function planSync(state: CollectionState, now: number): 'none' | SyncMode
 const STATUS_LABELS: Record<CollectionStatus, string> = { wish: '想看', doing: '在看', done: '看过' };
 
 /**
- * 本地非空而豆瓣整列返回空：多半是「我看」被设为私密或接口异常，不能据此清空。
+ * 本地非空而数据源整列返回空：多半是标记被设为私密或接口异常，不能据此清空。
  * 「在看」看完最后一部清零是正常操作，不做此检查。
  */
-function guardNotEmptied(status: CollectionStatus, prev: CollectionItem[], next: CollectionItem[]): void {
+function guardNotEmptied(label: string, status: CollectionStatus, prev: CollectionItem[], next: CollectionItem[]): void {
   if (prev.length > 0 && next.length === 0) {
-    throw new Error(`豆瓣返回的「${STATUS_LABELS[status]}」列表为空，可能「我看」已设为私密，已保留旧数据`);
+    throw new Error(`${label}返回的「${STATUS_LABELS[status]}」列表为空，可能标记已设为私密，已保留旧数据`);
   }
 }
 
@@ -106,7 +106,7 @@ export async function runSync(
   if (!userId) return prev;
   try {
     const wish = await fetchAll(provider, userId, 'wish', delay);
-    guardNotEmptied('wish', prev.lists.wish, wish);
+    guardNotEmptied(provider.label, 'wish', prev.lists.wish, wish);
     await delay();
     const doing = await fetchAll(provider, userId, 'doing', delay);
     await delay();
@@ -114,7 +114,7 @@ export async function runSync(
       mode === 'full'
         ? await fetchAll(provider, userId, 'done', delay)
         : await fetchNewSince(provider, userId, 'done', prev.lists.done, delay);
-    guardNotEmptied('done', prev.lists.done, done);
+    guardNotEmptied(provider.label, 'done', prev.lists.done, done);
     return {
       ...prev,
       lists: { wish, doing, done },

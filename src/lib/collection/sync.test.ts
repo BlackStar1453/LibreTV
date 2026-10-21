@@ -11,6 +11,7 @@ function fakeProvider(data: Partial<Record<CollectionStatus, CollectionItem[]>>,
   const calls: string[] = [];
   return {
     name: 'douban',
+    label: '豆瓣',
     pageSize,
     calls,
     async fetchPage(_userId, status, start) {
@@ -36,6 +37,15 @@ describe('fetchAll', () => {
     p.fetchPage = vi.fn(async (_u, _s, start) => ({ items: start === 0 ? [item('1')] : [], total: 99 }));
     const items = await fetchAll(p, 'u', 'wish', noDelay);
     expect(items).toHaveLength(1);
+  });
+
+  it('过滤后为空但原始条数非零的页不算末页（如整页都是书）', async () => {
+    const p = fakeProvider({});
+    p.fetchPage = vi.fn(async (_u, _s, start) =>
+      start === 0 ? { items: [], total: 4, rawCount: 2 } : { items: [item('3')], total: 4, rawCount: 2 }
+    );
+    const items = await fetchAll(p, 'u', 'wish', noDelay);
+    expect(items.map((i) => i.id)).toEqual(['3']);
   });
 
   it('按 id 去重（翻页期间新增标记导致条目错位）', async () => {

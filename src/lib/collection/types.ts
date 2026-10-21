@@ -24,10 +24,14 @@ export interface CollectionItem {
 export interface CollectionPage {
   items: CollectionItem[];
   total: number;
+  /** 过滤前本页原始条数（数据源会滤掉非影视条目时提供），用于判断是否翻到末页 */
+  rawCount?: number;
 }
 
 export interface CollectionProvider {
   name: string;
+  /** 界面与错误信息中的来源名，如「豆瓣」 */
+  label: string;
   pageSize: number;
   fetchPage(userId: string, status: CollectionStatus, start: number): Promise<CollectionPage>;
 }
