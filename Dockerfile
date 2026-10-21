@@ -25,6 +25,8 @@ RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+# 「我的豆瓣」同步数据目录（建议挂载卷持久化）
+RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
 
 USER nextjs
 

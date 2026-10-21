@@ -13,6 +13,6 @@ export async function POST(req: Request) {
   const state = await service.getState();
   if (!state.userId) return jsonError('尚未绑定豆瓣 ID', 400);
 
-  void service.sync('full');
+  service.sync('full').catch((err) => console.error('[collection] 立即同步异常', err));
   return NextResponse.json({ syncing: true }, { status: 202 });
 }

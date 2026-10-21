@@ -67,7 +67,7 @@ function emptyState(userId: string | null = 'u'): CollectionState {
   return {
     userId,
     lists: { wish: [], doing: [], done: [] },
-    lastQuickAt: null,
+    lastAttemptAt: null,
     lastFullAt: null,
     lastResult: null,
   };
@@ -77,33 +77,41 @@ describe('planSync', () => {
   const at = (s: string) => new Date(s).getTime();
 
   it('未绑定 ID 不同步', () => {
-    expect(planSync(emptyState(null), at('2026-10-21T10:00:00'))).toBe('none');
+    expect(planSync(emptyState(null), at('2026-10-21T10:00:00+08:00'))).toBe('none');
   });
 
   it('从未全量过 → 全量', () => {
-    expect(planSync(emptyState(), at('2026-10-21T10:00:00'))).toBe('full');
+    expect(planSync(emptyState(), at('2026-10-21T10:00:00+08:00'))).toBe('full');
   });
 
   it('首次全量失败后不立即重试，满 6 小时再补全量', () => {
-    const s = { ...emptyState(), lastQuickAt: at('2026-10-21T10:00:00') };
-    expect(planSync(s, at('2026-10-21T10:30:00'))).toBe('none');
-    expect(planSync(s, at('2026-10-21T16:00:00'))).toBe('full');
+    const s = { ...emptyState(), lastAttemptAt: at('2026-10-21T10:00:00+08:00') };
+    expect(planSync(s, at('2026-10-21T10:30:00+08:00'))).toBe('none');
+    expect(planSync(s, at('2026-10-21T16:00:00+08:00'))).toBe('full');
   });
 
   it('凌晨 3-5 点且今天还没全量 → 全量', () => {
-    const s = { ...emptyState(), lastFullAt: at('2026-10-20T03:10:00'), lastQuickAt: at('2026-10-21T02:00:00') };
-    expect(planSync(s, at('2026-10-21T03:30:00'))).toBe('full');
+    const s = { ...emptyState(), lastFullAt: at('2026-10-20T03:10:00+08:00'), lastAttemptAt: at('2026-10-21T02:00:00+08:00') };
+    expect(planSync(s, at('2026-10-21T03:30:00+08:00'))).toBe('full');
   });
 
   it('今天凌晨已全量 → 不重复全量', () => {
-    const s = { ...emptyState(), lastFullAt: at('2026-10-21T03:05:00'), lastQuickAt: at('2026-10-21T03:05:00') };
-    expect(planSync(s, at('2026-10-21T04:30:00'))).toBe('none');
+    const s = { ...emptyState(), lastFullAt: at('2026-10-21T03:05:00+08:00'), lastAttemptAt: at('2026-10-21T03:05:00+08:00') };
+    expect(planSync(s, at('2026-10-21T04:30:00+08:00'))).toBe('none');
   });
 
   it('距上次同步满 6 小时 → 快速同步', () => {
-    const s = { ...emptyState(), lastFullAt: at('2026-10-21T03:05:00'), lastQuickAt: at('2026-10-21T03:05:00') };
-    expect(planSync(s, at('2026-10-21T09:06:00'))).toBe('quick');
-    expect(planSync(s, at('2026-10-21T09:00:00'))).toBe('none');
+    const s = { ...emptyState(), lastFullAt: at('2026-10-21T03:05:00+08:00'), lastAttemptAt: at('2026-10-21T03:05:00+08:00') };
+    expect(planSync(s, at('2026-10-21T09:06:00+08:00'))).toBe('quick');
+    expect(planSync(s, at('2026-10-21T09:00:00+08:00'))).toBe('none');
+  });
+
+  it('凌晨窗口按北京时间判断，与服务器时区无关', () => {
+    const s = { ...emptyState(), lastFullAt: at('2026-10-20T03:10:00+08:00'), lastAttemptAt: at('2026-10-21T02:00:00+08:00') };
+    // UTC 19:30 = 北京次日 03:30
+    expect(planSync(s, at('2026-10-20T19:30:00Z'))).toBe('full');
+    // UTC 21:30 = 北京次日 05:30，刚出窗口，且距上次尝试不足 6 小时
+    expect(planSync(s, at('2026-10-20T21:30:00Z'))).toBe('none');
   });
 });
 
@@ -116,7 +124,7 @@ describe('runSync', () => {
     expect(next.lists.doing).toEqual([]);
     expect(next.lists.done.map((i) => i.id)).toEqual(['5']);
     expect(next.lastFullAt).toBe(1000);
-    expect(next.lastQuickAt).toBe(1000);
+    expect(next.lastAttemptAt).toBe(1000);
     expect(next.lastResult).toEqual({ at: 1000, mode: 'full', ok: true });
   });
 
@@ -128,7 +136,22 @@ describe('runSync', () => {
     // 增量不做删除对齐，'gone' 留到每日全量时清理
     expect(next.lists.done.map((i) => i.id)).toEqual(['9', '5', 'gone']);
     expect(next.lastFullAt).toBe(1);
-    expect(next.lastQuickAt).toBe(2000);
+    expect(next.lastAttemptAt).toBe(2000);
+  });
+
+  it('本地有数据而豆瓣返回空列表（多半是设为私密）→ 视为失败，不清空', async () => {
+    const p = fakeProvider({ wish: [], doing: [], done: [] });
+    const prev = { ...emptyState(), lists: { wish: [item('1')], doing: [], done: [item('2')] } };
+    const next = await runSync(prev, p, 'full', 4000, noDelay);
+    expect(next.lists).toEqual(prev.lists);
+    expect(next.lastResult?.ok).toBe(false);
+    expect(next.lastResult?.error).toContain('私密');
+  });
+
+  it('本地本来就空的列表返回空是正常的（如「在看」为空）', async () => {
+    const p = fakeProvider({ wish: [item('1')], doing: [], done: [] });
+    const next = await runSync(emptyState(), p, 'full', 5000, noDelay);
+    expect(next.lastResult?.ok).toBe(true);
   });
 
   it('失败时保留全部旧数据，只记录错误', async () => {
@@ -141,7 +164,7 @@ describe('runSync', () => {
     expect(next.lists).toEqual(prev.lists);
     expect(next.lastFullAt).toBeNull();
     // 失败也记为一次尝试，避免每次调度检查都重试打满豆瓣
-    expect(next.lastQuickAt).toBe(3000);
+    expect(next.lastAttemptAt).toBe(3000);
     expect(next.lastResult).toEqual({ at: 3000, mode: 'full', ok: false, error: '豆瓣限流' });
   });
 });

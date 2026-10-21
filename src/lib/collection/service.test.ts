@@ -66,7 +66,7 @@ describe('createCollectionService', () => {
     expect(s.userId).toBe('u2');
     expect(s.lists.wish).toEqual([]);
     expect(s.lastFullAt).toBeNull();
-    expect(s.lastQuickAt).toBeNull();
+    expect(s.lastAttemptAt).toBeNull();
   });
 
   it('同步进行中再次触发复用同一次同步，不并发打豆瓣', async () => {
@@ -87,22 +87,65 @@ describe('createCollectionService', () => {
     expect(svc.isSyncing()).toBe(false);
   });
 
-  it('同步期间换绑 ID，旧同步结果不覆盖新账号', async () => {
+  it('同步期间换绑 ID：旧结果丢弃，随后自动为新账号同步', async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
-    const fetchPage = vi.fn(async () => {
-      await gate;
-      return { items: [item('old')], total: 1 };
+    const fetchPage = vi.fn(async (userId: string, status: string) => {
+      if (userId === 'u1') await gate;
+      return status === 'wish' ? { items: [item(userId)], total: 1 } : { items: [], total: 0 };
     });
     const svc = createCollectionService({ filePath: file, provider: provider(fetchPage), ...opts });
     await svc.setUserId('u1');
     const running = svc.sync('full');
     await svc.setUserId('u2');
+    const forNew = svc.sync('full');
     release();
-    await running;
+    await Promise.all([running, forNew]);
     const s = await svc.getState();
     expect(s.userId).toBe('u2');
-    expect(s.lists.wish).toEqual([]);
+    expect(s.lists.wish.map((i) => i.id)).toEqual(['u2']);
+  });
+
+  it('快速同步进行中请求全量：排队在其后执行，不被吞掉', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const modes: string[] = [];
+    const fetchPage = vi.fn(async (_u: string, status: string) => {
+      await gate;
+      modes.push(status);
+      return { items: [item(status)], total: 1 };
+    });
+    const svc = createCollectionService({ filePath: file, provider: provider(fetchPage), ...opts });
+    await svc.setUserId('u1');
+    const quick = svc.sync('quick');
+    const full = svc.sync('full');
+    release();
+    await Promise.all([quick, full]);
+    expect((await svc.getState()).lastResult?.mode).toBe('full');
+    expect(fetchPage).toHaveBeenCalledTimes(6);
+  });
+
+  it('文件损坏时备份原文件，避免下次保存覆盖掉', async () => {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, '{not json');
+    const svc = createCollectionService({ filePath: file, provider: provider(), ...opts });
+    await svc.getState();
+    const names = await fs.readdir(path.dirname(file));
+    expect(names.some((n) => n.startsWith('collection.json.corrupt-'))).toBe(true);
+  });
+
+  it('读取出错（非文件不存在）时抛错，而不是当作空状态', async () => {
+    await fs.mkdir(file, { recursive: true }); // 路径是目录 → EISDIR
+    const svc = createCollectionService({ filePath: file, provider: provider(), ...opts });
+    await expect(svc.getState()).rejects.toThrow();
+  });
+
+  it('并发保存不互相踩临时文件', async () => {
+    const svc = createCollectionService({ filePath: file, provider: provider(), ...opts });
+    await svc.setUserId('u1');
+    await Promise.all([svc.sync('full'), svc.setUserId('u2'), svc.setUserId('u3')]);
+    const raw = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(raw.userId).toBe((await svc.getState()).userId);
   });
 
   it('tick 按 planSync 决定是否同步', async () => {

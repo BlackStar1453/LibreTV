@@ -21,7 +21,7 @@ vi.mock('@/lib/api-guard', () => ({
 
 vi.mock('@/lib/collection/server', () => ({
   getCollectionService: () => ({
-    getState: async () => ({ userId: state.userId, lists: { wish: [], doing: [], done: [] }, lastQuickAt: null, lastFullAt: null, lastResult: null }),
+    getState: async () => ({ userId: state.userId, lists: { wish: [], doing: [], done: [] }, lastAttemptAt: null, lastFullAt: null, lastResult: null }),
     isSyncing: () => false,
     setUserId: async (id: string) => {
       state.userId = id;

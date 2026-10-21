@@ -6,8 +6,6 @@
 /** 想看 / 在看 / 看过 */
 export type CollectionStatus = 'wish' | 'doing' | 'done';
 
-export const COLLECTION_STATUSES: CollectionStatus[] = ['wish', 'doing', 'done'];
-
 export interface CollectionItem {
   id: string;
   title: string;
@@ -47,8 +45,8 @@ export interface SyncResult {
 export interface CollectionState {
   userId: string | null;
   lists: Record<CollectionStatus, CollectionItem[]>;
-  /** 上次同步尝试时间（无论成败），用于 6 小时节流 */
-  lastQuickAt: number | null;
+  /** 上次同步尝试时间（任一模式、无论成败），用于 6 小时节流 */
+  lastAttemptAt: number | null;
   /** 上次成功全量时间 */
   lastFullAt: number | null;
   lastResult: SyncResult | null;

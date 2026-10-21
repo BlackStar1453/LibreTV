@@ -4,7 +4,6 @@ import { getCollectionService } from '@/lib/collection/server';
 import { extractDoubanUserId } from '@/lib/collection/douban-provider';
 
 export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
 
 /** 「我的豆瓣」状态：绑定的 ID、三个列表、上次同步结果 */
 export async function GET(req: Request) {
@@ -32,7 +31,11 @@ export async function PUT(req: Request) {
   if (!userId) return jsonError('无法识别豆瓣 ID，请填写数字 ID 或个人主页链接', 400);
 
   const service = getCollectionService();
-  await service.setUserId(userId);
-  void service.sync('full');
+  try {
+    await service.setUserId(userId);
+  } catch (err) {
+    return jsonError(err instanceof Error ? `保存失败：${err.message}` : '保存失败', 500);
+  }
+  service.sync('full').catch((err) => console.error('[collection] 绑定后同步异常', err));
   return NextResponse.json({ userId });
 }
