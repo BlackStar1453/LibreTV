@@ -7,15 +7,15 @@ export async function register() {
   if (g[flag]) return;
   g[flag] = true;
 
-  const { ensureNeodbBound, getCollectionService, SCHEDULER_INTERVAL_MS } = await import('./lib/collection/server');
+  const { checkSourceReady, getCollectionService, SCHEDULER_INTERVAL_MS } = await import('./lib/collection/server');
+  const { COLLECTION_SOURCES } = await import('./lib/collection/types');
   const tick = () => {
-    getCollectionService('douban')
-      .tick()
-      .catch((err) => console.error('[collection] 豆瓣定时同步异常', err));
-    // 未配置 token 或 token 校验失败时跳过，避免每轮记一次失败
-    ensureNeodbBound()
-      .then((bind) => (bind.configured && !bind.error ? getCollectionService('neodb').tick() : undefined))
-      .catch((err) => console.error('[collection] NeoDB 定时同步异常', err));
+    for (const source of COLLECTION_SOURCES) {
+      // 来源未配置或校验失败时跳过，避免每轮记一次失败
+      checkSourceReady(source)
+        .then((ready) => (ready.configured && !ready.error ? getCollectionService(source).tick() : undefined))
+        .catch((err) => console.error(`[collection] ${source} 定时同步异常`, err));
+    }
   };
   // 启动后稍等再检查，避开冷启动高峰
   setTimeout(tick, 15 * 1000).unref();

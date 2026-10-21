@@ -32,7 +32,7 @@ export interface CollectionPage {
 }
 
 export interface CollectionProvider {
-  name: string;
+  name: CollectionSource;
   /** 界面与错误信息中的来源名，如「豆瓣」 */
   label: string;
   /** 列表被整列返回空时的可能原因提示 */

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { guardRequest, jsonError } from '@/lib/api-guard';
-import { ensureNeodbBound, getCollectionService } from '@/lib/collection/server';
+import { checkSourceReady, getCollectionService } from '@/lib/collection/server';
 import { parseCollectionSource } from '@/lib/collection/types';
 
 export const runtime = 'nodejs';
@@ -12,11 +12,9 @@ export async function POST(req: Request) {
   const source = parseCollectionSource(req);
   if (!source) return jsonError('未知的收藏来源', 400);
 
-  if (source === 'neodb') {
-    const bind = await ensureNeodbBound();
-    if (!bind.configured) return jsonError('未配置 NEODB_TOKEN', 400);
-    if (bind.error) return jsonError(bind.error, 400);
-  }
+  const bind = await checkSourceReady(source);
+  if (!bind.configured) return jsonError('该来源未配置（NeoDB 需在 .env 设置 NEODB_TOKEN）', 400);
+  if (bind.error) return jsonError(bind.error, 400);
   const service = getCollectionService(source);
   const state = await service.getState();
   if (!state.userId) return jsonError(source === 'neodb' ? 'NeoDB 尚未绑定，请检查 NEODB_TOKEN' : '尚未绑定豆瓣 ID', 400);

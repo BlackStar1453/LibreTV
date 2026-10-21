@@ -14,7 +14,11 @@ const TABS: { key: CollectionStatus; label: string }[] = [
 ];
 /** 看过动辄上千条，按批渲染，避免首页一次挂上千张卡片 */
 const PAGE = 48;
-const LABELS: Record<CollectionSource, string> = { douban: '豆瓣', neodb: 'NeoDB' };
+/** 各来源的界面差异集中在这里：豆瓣靠用户填 ID 绑定，NeoDB 由服务端 token 决定账号 */
+const SOURCE_UI: Record<CollectionSource, { label: string; bindable: boolean; emptyText: string }> = {
+  douban: { label: '豆瓣', bindable: true, emptyText: '这里还没有条目。若豆瓣上有标记，请确认「我看」已设为公开' },
+  neodb: { label: 'NeoDB', bindable: false, emptyText: '这里还没有条目（只同步电影与剧集）' },
+};
 const queryKey = (source: CollectionSource) => ['my-collection', source] as const;
 
 function formatTime(ms: number): string {
@@ -29,7 +33,7 @@ function subtitleOf(item: CollectionItem): string {
  * 首页「我的豆瓣 / 我的 NeoDB」：同步自对应账号的想看 / 在看 / 看过，点卡片按片名搜资源。
  * NeoDB 未配置 NEODB_TOKEN 时整块隐藏。
  */
-export function MyDoubanSection({ onPick, source = 'douban' }: { onPick: (title: string) => void; source?: CollectionSource }) {
+export function CollectionSection({ onPick, source }: { onPick: (title: string) => void; source: CollectionSource }) {
   const query = useQuery({
     queryKey: queryKey(source),
     queryFn: ({ signal }) => api.collection(source, signal),
@@ -43,7 +47,7 @@ export function MyDoubanSection({ onPick, source = 'douban' }: { onPick: (title:
   if (query.isError) {
     return (
       <Shell source={source}>
-        <p className="text-sm text-faint py-4">「我的{LABELS[source]}」加载失败：{query.error.message}</p>
+        <p className="text-sm text-faint py-4">「我的{SOURCE_UI[source].label}」加载失败：{query.error.message}</p>
       </Shell>
     );
   }
@@ -52,7 +56,7 @@ export function MyDoubanSection({ onPick, source = 'douban' }: { onPick: (title:
   if (!data.userId) {
     return (
       <Shell source={source}>
-        {source === 'douban' ? (
+        {SOURCE_UI[source].bindable ? (
           <BindForm />
         ) : data.bindError ? (
           <p className="text-sm text-danger py-4">NeoDB 连接失败：{data.bindError}</p>
@@ -66,7 +70,7 @@ export function MyDoubanSection({ onPick, source = 'douban' }: { onPick: (title:
 }
 
 function Shell({ source, children, actions }: { source: CollectionSource; children: React.ReactNode; actions?: React.ReactNode }) {
-  const title = `我的${LABELS[source]}`;
+  const title = `我的${SOURCE_UI[source].label}`;
   return (
     <section aria-label={title} className="mb-8">
       <div className="flex items-center justify-between gap-2 mb-3">
@@ -150,7 +154,7 @@ function CollectionView({ source, data, onPick }: { source: CollectionSource; da
             立即同步
           </button>
           {/* NeoDB 账号由 token 决定，没有「更换 ID」 */}
-          {source === 'douban' && (
+          {SOURCE_UI[source].bindable && (
             <button className="btn-ghost btn-sm shrink-0" onClick={() => setEditing((v) => !v)}>
               {editing ? '取消' : '更换 ID'}
             </button>
@@ -185,11 +189,9 @@ function CollectionView({ source, data, onPick }: { source: CollectionSource; da
       {items.length === 0 ? (
         <p className="text-center text-sm text-faint py-8">
           {syncing
-            ? `正在从${LABELS[source]}同步…`
+            ? `正在从${SOURCE_UI[source].label}同步…`
             : last?.ok
-              ? source === 'douban'
-                ? '这里还没有条目。若豆瓣上有标记，请确认「我看」已设为公开'
-                : '这里还没有条目（只同步电影与剧集）'
+              ? SOURCE_UI[source].emptyText
               : '暂无数据，可点击「立即同步」'}
         </p>
       ) : (

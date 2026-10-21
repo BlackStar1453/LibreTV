@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { guardRequest, jsonError } from '@/lib/api-guard';
-import { ensureNeodbBound, getCollectionService } from '@/lib/collection/server';
+import { checkSourceReady, getCollectionService } from '@/lib/collection/server';
 import { extractDoubanUserId } from '@/lib/collection/douban-provider';
 import { parseCollectionSource } from '@/lib/collection/types';
 
@@ -13,7 +13,7 @@ export async function GET(req: Request) {
   const source = parseCollectionSource(req);
   if (!source) return jsonError('未知的收藏来源', 400);
 
-  const bind = source === 'neodb' ? await ensureNeodbBound() : { configured: true, error: null };
+  const bind = await checkSourceReady(source);
   const service = getCollectionService(source);
   const state = await service.getState();
   return NextResponse.json({ ...state, syncing: service.isSyncing(), configured: bind.configured, bindError: bind.error });

@@ -24,11 +24,13 @@ vi.mock('@/lib/api-guard', () => ({
 }));
 
 vi.mock('@/lib/collection/server', () => ({
-  ensureNeodbBound: async () => {
+  // 与真实实现一致：豆瓣恒就绪，只有 NeoDB 走 token 校验
+  checkSourceReady: async (source: string) => {
+    if (source !== 'neodb') return { configured: true, error: null };
     state.ensureCalls++;
     return { configured: state.neodbConfigured, error: state.bindError };
   },
-  getCollectionService: (source = 'douban') => (state.sources.push(source), {
+  getCollectionService: (source: string) => (state.sources.push(source), {
     getState: async () => ({ userId: state.userId, lists: { wish: [], doing: [], done: [] }, lastAttemptAt: null, lastFullAt: null, lastResult: null }),
     isSyncing: () => false,
     setUserId: async (id: string) => {
