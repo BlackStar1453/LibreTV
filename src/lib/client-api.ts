@@ -1,6 +1,7 @@
 'use client';
 
 import type { SearchResponse, SearchStreamEvent, SourceSearchOutcome, VideoDetail, DoubanResponse, BangumiCalendarResponse, AuthStatusResponse, SourceConfig, SearchResultItem, LivePlaylistResponse, LiveEpgResponse, SourceListPayload, QualityProbeItem, QualityProbeResult } from './types';
+import type { CollectionResponse } from './collection/types';
 
 /**
  * 客户端 API 封装。401 时触发全局事件打开登录框，
@@ -200,6 +201,18 @@ export const api = {
     const sp = new URLSearchParams({ type, tag, pageStart: String(pageStart), pageSize: String(pageSize) });
     return request<DoubanResponse>(`/api/douban?${sp.toString()}`, { signal });
   },
+
+  /** 我的豆瓣：绑定的 ID、想看/在看/看过列表与同步状态 */
+  collection: (signal?: AbortSignal) => request<CollectionResponse>('/api/collection', { signal }),
+
+  bindDouban: (userId: string) =>
+    request<{ userId: string }>('/api/collection', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    }),
+
+  syncCollection: () => request<{ syncing: boolean }>('/api/collection/sync', { method: 'POST' }),
 
   /** Bangumi 每日放送（免 key），首页推荐的另一数据源 */
   bangumiCalendar: (signal?: AbortSignal) => request<BangumiCalendarResponse>('/api/bangumi/calendar', { signal }),
