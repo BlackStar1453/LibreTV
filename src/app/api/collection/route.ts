@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { guardRequest, jsonError } from '@/lib/api-guard';
-import { checkSourceReady, getCollectionService } from '@/lib/collection/server';
+import { checkSourceReady, getCollectionService, isNeodbManagedByEnv, saveNeodbToken } from '@/lib/collection/server';
 import { extractDoubanUserId } from '@/lib/collection/douban-provider';
 import { parseCollectionSource } from '@/lib/collection/types';
 
@@ -16,23 +16,44 @@ export async function GET(req: Request) {
   const bind = await checkSourceReady(source);
   const service = getCollectionService(source);
   const state = await service.getState();
-  return NextResponse.json({ ...state, syncing: service.isSyncing(), configured: bind.configured, bindError: bind.error });
+  const managedByEnv = source === 'neodb' && (await isNeodbManagedByEnv());
+  return NextResponse.json({
+    ...state,
+    syncing: service.isSyncing(),
+    configured: bind.configured,
+    bindError: bind.error,
+    managedByEnv,
+  });
 }
 
-/** 绑定 / 更换豆瓣 ID：接受纯 ID 或主页链接，保存后后台全量同步。NeoDB 由 NEODB_TOKEN 决定账号，不走这里 */
+/**
+ * 绑定 / 更换账号，保存后后台全量同步。
+ * 豆瓣：body.userId 接受纯 ID 或主页链接；NeoDB：body.token 为 Access Token，校验通过才保存，响应不回传 token。
+ */
 export async function PUT(req: Request) {
   const guarded = guardRequest(req);
   if (guarded) return guarded;
   const source = parseCollectionSource(req);
-  if (source !== 'douban') return jsonError('只有豆瓣需要填写 ID；NeoDB 请在 .env 配置 NEODB_TOKEN', 400);
+  if (!source) return jsonError('未知的收藏来源', 400);
 
-  let input = '';
+  let body: { userId?: string; token?: string };
   try {
-    const body = (await req.json()) as { userId?: string };
-    input = String(body.userId ?? '');
+    body = (await req.json()) as typeof body;
   } catch {
     return jsonError('请求格式错误', 400);
   }
+
+  if (source === 'neodb') {
+    if (!body.token) return jsonError('请粘贴 NeoDB token', 400);
+    try {
+      const bind = await saveNeodbToken(String(body.token));
+      return NextResponse.json({ ok: true, bindError: bind.error });
+    } catch (err) {
+      return jsonError(err instanceof Error ? err.message : 'NeoDB token 保存失败', 400);
+    }
+  }
+
+  const input = String(body.userId ?? '');
   const userId = extractDoubanUserId(input);
   if (!userId) return jsonError('无法识别豆瓣 ID，请填写数字 ID 或个人主页链接', 400);
 

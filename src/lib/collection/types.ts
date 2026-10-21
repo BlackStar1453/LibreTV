@@ -68,6 +68,8 @@ export interface CollectionResponse extends CollectionState {
   configured: boolean;
   /** 绑定失败原因（NeoDB token 无效等），无错误为 null */
   bindError: string | null;
+  /** NeoDB token 由服务器 .env 配置，页面不能修改 */
+  managedByEnv: boolean;
 }
 
 export const COLLECTION_SOURCES: readonly CollectionSource[] = ['douban', 'neodb'];

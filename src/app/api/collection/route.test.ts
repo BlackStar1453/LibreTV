@@ -16,6 +16,8 @@ const state = vi.hoisted(() => ({
   neodbConfigured: false,
   ensureCalls: 0,
   bindError: null as string | null,
+  savedTokens: [] as string[],
+  managedByEnv: false,
 }));
 
 vi.mock('@/lib/api-guard', () => ({
@@ -24,6 +26,12 @@ vi.mock('@/lib/api-guard', () => ({
 }));
 
 vi.mock('@/lib/collection/server', () => ({
+  isNeodbManagedByEnv: async () => state.managedByEnv,
+  saveNeodbToken: async (token: string) => {
+    if (token === 'bad') throw new Error('NeoDB token 无效');
+    state.savedTokens.push(token);
+    return { configured: true, error: null };
+  },
   // 与真实实现一致：豆瓣恒就绪，只有 NeoDB 走 token 校验
   checkSourceReady: async (source: string) => {
     if (source !== 'neodb') return { configured: true, error: null };
@@ -53,6 +61,8 @@ beforeEach(() => {
   state.neodbConfigured = false;
   state.ensureCalls = 0;
   state.bindError = null;
+  state.savedTokens = [];
+  state.managedByEnv = false;
 });
 
 const put = (body: unknown) =>
@@ -121,12 +131,34 @@ describe('/api/collection', () => {
     expect((await POST(new Request('http://x/api/collection/sync?source=imdb', { method: 'POST' }))).status).toBe(400);
   });
 
-  it('PUT 不支持 NeoDB（靠 token 绑定）', async () => {
-    const res = await PUT(
-      new Request('http://x/api/collection?source=neodb', { method: 'PUT', body: JSON.stringify({ userId: 'x' }) })
-    );
+  const putNeodb = (body: unknown) =>
+    PUT(new Request('http://x/api/collection?source=neodb', { method: 'PUT', body: JSON.stringify(body) }));
+
+  it('PUT ?source=neodb 校验并保存 token，响应不回传 token', async () => {
+    const res = await putNeodb({ token: 'abc' });
+    expect(res.status).toBe(200);
+    expect(state.savedTokens).toEqual(['abc']);
+    expect(JSON.stringify(await res.json())).not.toContain('abc');
+  });
+
+  it('PUT ?source=neodb token 无效返回 400', async () => {
+    const res = await putNeodb({ token: 'bad' });
     expect(res.status).toBe(400);
-    expect(state.userId).toBeNull();
+    expect((await res.json()).error).toContain('无效');
+  });
+
+  it('PUT ?source=neodb 缺少 token 返回 400', async () => {
+    expect((await putNeodb({ userId: 'x' })).status).toBe(400);
+    expect(state.savedTokens).toEqual([]);
+  });
+
+  it('GET 返回 NeoDB 是否由 .env 管理', async () => {
+    state.neodbConfigured = true;
+    state.managedByEnv = true;
+    const res = await GET(new Request('http://x/api/collection?source=neodb'));
+    expect(await res.json()).toMatchObject({ managedByEnv: true });
+    const douban = await GET(new Request('http://x/api/collection'));
+    expect(await douban.json()).toMatchObject({ managedByEnv: false });
   });
 
   it('POST /sync?source=neodb 同步 NeoDB', async () => {
