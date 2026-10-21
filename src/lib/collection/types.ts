@@ -1,6 +1,6 @@
 /**
  * 「我的豆瓣」收藏同步的领域类型。
- * 数据源（豆瓣，日后 NeoDB）只需实现 CollectionProvider，界面与同步逻辑不感知来源。
+ * 数据源（豆瓣 / NeoDB）只需实现 CollectionProvider，界面与同步逻辑不感知来源。
  */
 
 /** 收藏来源：豆瓣（填公开 ID）/ NeoDB（.env 配 token），各自独立同步与存储 */
@@ -35,6 +35,8 @@ export interface CollectionProvider {
   name: string;
   /** 界面与错误信息中的来源名，如「豆瓣」 */
   label: string;
+  /** 列表被整列返回空时的可能原因提示 */
+  emptyHint: string;
   pageSize: number;
   fetchPage(userId: string, status: CollectionStatus, start: number): Promise<CollectionPage>;
 }
@@ -64,6 +66,8 @@ export interface CollectionResponse extends CollectionState {
   syncing: boolean;
   /** 数据源是否可用：豆瓣恒为 true；NeoDB 取决于是否配置了 NEODB_TOKEN */
   configured: boolean;
+  /** 绑定失败原因（NeoDB token 无效等），无错误为 null */
+  bindError: string | null;
 }
 
 export const COLLECTION_SOURCES: readonly CollectionSource[] = ['douban', 'neodb'];

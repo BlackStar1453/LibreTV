@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Header } from '@/components/header';
 import { RecommendSection } from '@/components/douban-section';
 import { MyDoubanSection } from '@/components/my-douban-section';
+import { COLLECTION_SOURCES } from '@/lib/collection/types';
 import { DetailModal } from '@/components/detail-modal';
 import { AggregatedCard, aggregateResults } from '@/components/video-card';
 import { useAppStore, resolveSource, isInDisabledSubscription, isSourceDisabled } from '@/lib/store';
@@ -367,7 +368,7 @@ function HomeContent() {
 
         {/* 我的豆瓣 / 我的 NeoDB（有搜索时隐藏；NeoDB 未配置 token 时组件自行隐藏） */}
         {!urlQuery &&
-          (['douban', 'neodb'] as const).map((source) => (
+          COLLECTION_SOURCES.map((source) => (
             <MyDoubanSection
               key={source}
               source={source}

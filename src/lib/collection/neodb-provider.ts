@@ -56,7 +56,7 @@ export function parseNeodbMarks(data: unknown): CollectionPage {
       markedAt: m.created_time ?? '',
       // NeoDB 评分 1-10，界面按 5 星制
       myRating: m.rating_grade ? m.rating_grade / 2 : undefined,
-      url: s.url ? new URL(s.url, NEODB_ORIGIN).toString() : `${NEODB_ORIGIN}/movie/${s.uuid}`,
+      url: s.url ? new URL(s.url, NEODB_ORIGIN).toString() : `${NEODB_ORIGIN}/${s.category}/${s.uuid}`,
     });
   }
   return { items, total: typeof d.count === 'number' ? d.count : d.data.length, rawCount: d.data.length };
@@ -66,6 +66,7 @@ export function createNeodbProvider(fetchJson: (url: string) => Promise<unknown>
   return {
     name: 'neodb',
     label: 'NeoDB',
+    emptyHint: '标记已设为仅自己可见，或 token 属于另一个账号',
     pageSize: PAGE_SIZE,
     async fetchPage(_userId, status, start) {
       const sp = new URLSearchParams({ page: String(Math.floor(start / PAGE_SIZE) + 1), page_size: String(PAGE_SIZE) });

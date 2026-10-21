@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { guardRequest, jsonError } from '@/lib/api-guard';
-import { ensureNeodbBound, getCollectionService, isNeodbConfigured } from '@/lib/collection/server';
+import { ensureNeodbBound, getCollectionService } from '@/lib/collection/server';
 import { extractDoubanUserId } from '@/lib/collection/douban-provider';
 import { parseCollectionSource } from '@/lib/collection/types';
 
@@ -13,11 +13,10 @@ export async function GET(req: Request) {
   const source = parseCollectionSource(req);
   if (!source) return jsonError('未知的收藏来源', 400);
 
-  if (source === 'neodb') await ensureNeodbBound();
+  const bind = source === 'neodb' ? await ensureNeodbBound() : { configured: true, error: null };
   const service = getCollectionService(source);
   const state = await service.getState();
-  const configured = source === 'neodb' ? isNeodbConfigured() : true;
-  return NextResponse.json({ ...state, syncing: service.isSyncing(), configured });
+  return NextResponse.json({ ...state, syncing: service.isSyncing(), configured: bind.configured, bindError: bind.error });
 }
 
 /** 绑定 / 更换豆瓣 ID：接受纯 ID 或主页链接，保存后后台全量同步。NeoDB 由 NEODB_TOKEN 决定账号，不走这里 */

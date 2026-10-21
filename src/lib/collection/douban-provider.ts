@@ -67,6 +67,7 @@ export function createDoubanProvider(fetchJson: (url: string) => Promise<unknown
   return {
     name: 'douban',
     label: '豆瓣',
+    emptyHint: '「我看」已设为私密',
     pageSize: PAGE_SIZE,
     async fetchPage(userId, status, start) {
       const sp = new URLSearchParams({

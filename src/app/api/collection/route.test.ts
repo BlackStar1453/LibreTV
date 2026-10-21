@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({
   sources: [] as string[],
   neodbConfigured: false,
   ensureCalls: 0,
+  bindError: null as string | null,
 }));
 
 vi.mock('@/lib/api-guard', () => ({
@@ -23,9 +24,9 @@ vi.mock('@/lib/api-guard', () => ({
 }));
 
 vi.mock('@/lib/collection/server', () => ({
-  isNeodbConfigured: () => state.neodbConfigured,
   ensureNeodbBound: async () => {
     state.ensureCalls++;
+    return { configured: state.neodbConfigured, error: state.bindError };
   },
   getCollectionService: (source = 'douban') => (state.sources.push(source), {
     getState: async () => ({ userId: state.userId, lists: { wish: [], doing: [], done: [] }, lastAttemptAt: null, lastFullAt: null, lastResult: null }),
@@ -49,6 +50,7 @@ beforeEach(() => {
   state.sources = [];
   state.neodbConfigured = false;
   state.ensureCalls = 0;
+  state.bindError = null;
 });
 
 const put = (body: unknown) =>
@@ -127,9 +129,26 @@ describe('/api/collection', () => {
 
   it('POST /sync?source=neodb 同步 NeoDB', async () => {
     state.userId = 'yao';
+    state.neodbConfigured = true;
     const res = await POST(new Request('http://x/api/collection/sync?source=neodb', { method: 'POST' }));
     expect(res.status).toBe(202);
     expect(state.sources).toContain('neodb');
     expect(state.syncCalls).toEqual(['full']);
+  });
+
+  it('GET ?source=neodb 返回 token 校验失败原因', async () => {
+    state.neodbConfigured = true;
+    state.bindError = 'NEODB_TOKEN 无效';
+    const res = await GET(new Request('http://x/api/collection?source=neodb'));
+    expect(await res.json()).toMatchObject({ configured: true, bindError: 'NEODB_TOKEN 无效' });
+  });
+
+  it('POST /sync?source=neodb 未配置或 token 无效时返回 400，不在后台失败', async () => {
+    state.userId = 'yao';
+    expect((await POST(new Request('http://x/api/collection/sync?source=neodb', { method: 'POST' }))).status).toBe(400);
+    state.neodbConfigured = true;
+    state.bindError = 'NEODB_TOKEN 无效';
+    expect((await POST(new Request('http://x/api/collection/sync?source=neodb', { method: 'POST' }))).status).toBe(400);
+    expect(state.syncCalls).toEqual([]);
   });
 });

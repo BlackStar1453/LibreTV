@@ -54,8 +54,10 @@ export function MyDoubanSection({ onPick, source = 'douban' }: { onPick: (title:
       <Shell source={source}>
         {source === 'douban' ? (
           <BindForm />
+        ) : data.bindError ? (
+          <p className="text-sm text-danger py-4">NeoDB 连接失败：{data.bindError}</p>
         ) : (
-          <p className="text-sm text-faint py-4">正在连接 NeoDB 账号…若一直停留在这里，请检查 .env 中的 NEODB_TOKEN</p>
+          <p className="text-sm text-faint py-4">正在连接 NeoDB 账号…</p>
         )}
       </Shell>
     );

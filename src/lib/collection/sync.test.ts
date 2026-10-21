@@ -12,6 +12,7 @@ function fakeProvider(data: Partial<Record<CollectionStatus, CollectionItem[]>>,
   return {
     name: 'douban',
     label: '豆瓣',
+    emptyHint: '「我看」已设为私密',
     pageSize,
     calls,
     async fetchPage(_userId, status, start) {

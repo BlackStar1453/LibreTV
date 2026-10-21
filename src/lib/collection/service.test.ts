@@ -25,6 +25,7 @@ function provider(fetchPage?: CollectionProvider['fetchPage']): CollectionProvid
   return {
     name: 'douban',
     label: '豆瓣',
+    emptyHint: '「我看」已设为私密',
     pageSize: 50,
     fetchPage: fetchPage ?? (async (_u, status) => ({ items: status === 'wish' ? [item('1')] : [], total: status === 'wish' ? 1 : 0 })),
   };

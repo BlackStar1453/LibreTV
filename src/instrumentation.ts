@@ -12,9 +12,9 @@ export async function register() {
     getCollectionService('douban')
       .tick()
       .catch((err) => console.error('[collection] 豆瓣定时同步异常', err));
-    // 未配置 NEODB_TOKEN 时 userId 为空，planSync 返回 none，不会发请求
+    // 未配置 token 或 token 校验失败时跳过，避免每轮记一次失败
     ensureNeodbBound()
-      .then(() => getCollectionService('neodb').tick())
+      .then((bind) => (bind.configured && !bind.error ? getCollectionService('neodb').tick() : undefined))
       .catch((err) => console.error('[collection] NeoDB 定时同步异常', err));
   };
   // 启动后稍等再检查，避开冷启动高峰

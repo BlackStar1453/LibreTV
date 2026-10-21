@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fetchUpstream } from '../fetch-utils';
 import { createDoubanProvider, DOUBAN_HEADERS } from './douban-provider';
 import { createNeodbProvider, NEODB_ORIGIN } from './neodb-provider';
+import { createNeodbBinder, type NeodbBindStatus } from './neodb-binding';
 import { createCollectionService, type CollectionService } from './service';
 import type { CollectionSource } from './types';
 
@@ -16,7 +17,11 @@ const PAGE_DELAY_MS: Record<CollectionSource, number> = { douban: 2000, neodb: 5
 export const SCHEDULER_INTERVAL_MS = 30 * 60 * 1000;
 
 const KEY = Symbol.for('libretv.collectionServices');
-type GlobalWithService = typeof globalThis & { [KEY]?: Partial<Record<CollectionSource, CollectionService>> };
+const BINDER_KEY = Symbol.for('libretv.neodbBinder');
+type GlobalWithService = typeof globalThis & {
+  [KEY]?: Partial<Record<CollectionSource, CollectionService>>;
+  [BINDER_KEY]?: ReturnType<typeof createNeodbBinder>;
+};
 
 async function fetchDoubanJson(url: string): Promise<unknown> {
   const res = await fetchUpstream(url, { timeoutMs: 10000, retries: 1, headers: DOUBAN_HEADERS });
@@ -60,23 +65,18 @@ export function getCollectionService(source: CollectionSource = 'douban'): Colle
   return services[source];
 }
 
-export function isNeodbConfigured(): boolean {
-  return neodbToken() !== null;
-}
-
-/**
- * NeoDB 不需要用户填 ID：配置了 token 即视为绑定。首次使用时查询 token 所属用户名写入状态，
- * 之后的同步、节流与豆瓣共用同一套逻辑。失败只记日志，下次调用再试。
- */
-export async function ensureNeodbBound(): Promise<void> {
-  if (!isNeodbConfigured()) return;
-  const service = getCollectionService('neodb');
-  if ((await service.getState()).userId) return;
-  try {
-    const me = (await fetchNeodbJson(`${NEODB_ORIGIN}/api/me`)) as { username?: string };
-    if (!me?.username) throw new Error('NeoDB /api/me 未返回用户名');
-    await service.setUserId(me.username);
-  } catch (err) {
-    console.error('[collection] NeoDB 绑定失败', err);
-  }
+/** 确保 NeoDB 已按当前 token 绑定（详见 neodb-binding.ts）；API 与调度器在用 NeoDB 前调用 */
+export function ensureNeodbBound(): Promise<NeodbBindStatus> {
+  const g = globalThis as GlobalWithService;
+  g[BINDER_KEY] ??= createNeodbBinder({
+    getToken: neodbToken,
+    fetchUsername: async () => {
+      const me = (await fetchNeodbJson(`${NEODB_ORIGIN}/api/me`)) as { username?: string };
+      if (!me?.username) throw new Error('NeoDB /api/me 未返回用户名');
+      return me.username;
+    },
+    service: getCollectionService('neodb'),
+    now: () => Date.now(),
+  });
+  return g[BINDER_KEY].ensure();
 }
