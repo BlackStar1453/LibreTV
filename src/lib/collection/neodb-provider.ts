@@ -18,10 +18,24 @@ interface RawMark {
     category?: string;
     title?: string;
     display_title?: string;
+    localized_title?: { lang?: string; text?: string }[] | null;
     url?: string;
     cover_image_url?: string | null;
     rating?: number | null;
   } | null;
+}
+
+/** 简体优先的中文语言标签；都没有时退回任意 zh-*（繁体也比英文好搜） */
+const ZH_PREFERENCE = ['zh-cn', 'zh-hans', 'zh'];
+
+/** 片源都是中文站，按英文名搜不到，因此片名优先取中文译名 */
+function chineseTitle(localized: { lang?: string; text?: string }[] | null | undefined): string | undefined {
+  if (!localized?.length) return undefined;
+  for (const lang of ZH_PREFERENCE) {
+    const hit = localized.find((t) => t.lang?.toLowerCase() === lang && t.text);
+    if (hit) return hit.text;
+  }
+  return localized.find((t) => t.lang?.toLowerCase().startsWith('zh') && t.text)?.text;
 }
 
 export function parseNeodbMarks(data: unknown): CollectionPage {
@@ -31,7 +45,7 @@ export function parseNeodbMarks(data: unknown): CollectionPage {
   const items: CollectionItem[] = [];
   for (const m of d.data) {
     const s = m.item;
-    const title = s?.display_title || s?.title;
+    const title = chineseTitle(s?.localized_title) || s?.display_title || s?.title;
     if (!s?.uuid || !title || !VIDEO_CATEGORIES.has(s.category ?? '')) continue;
     items.push({
       id: s.uuid,

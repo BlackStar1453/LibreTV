@@ -39,6 +39,17 @@ describe('parseNeodbMarks', () => {
     expect(page.items[1].myRating).toBeUndefined();
   });
 
+  it('片名优先取简体中文（片源都是中文站，按英文名搜不到）', () => {
+    const m = mark('a', { title: 'Aftersun' });
+    const withLocal = (localized: { lang: string; text: string }[]) => ({ ...m, item: { ...m.item, localized_title: localized } });
+    const titleOf = (localized: { lang: string; text: string }[]) =>
+      parseNeodbMarks({ count: 1, data: [withLocal(localized)] }).items[0].title;
+    expect(titleOf([{ lang: 'zh-tw', text: '日麗' }, { lang: 'en', text: 'Aftersun' }, { lang: 'zh-cn', text: '晒后假日' }])).toBe('晒后假日');
+    expect(titleOf([{ lang: 'zh', text: '戀戀風塵' }, { lang: 'zh-hans', text: '恋恋风尘' }])).toBe('恋恋风尘');
+    expect(titleOf([{ lang: 'zh-hk', text: '日麗' }])).toBe('日麗');
+    expect(titleOf([{ lang: 'en', text: 'Aftersun' }])).toBe('Aftersun');
+  });
+
   it('只保留电影 / 剧集，rawCount 记录过滤前条数，避免整页是书时被误判为末页', () => {
     const page = parseNeodbMarks({ count: 3, pages: 1, data: [mark('a'), mark('b', { category: 'book' }), mark('c', { category: 'tv' })] });
     expect(page.items.map((i) => i.id)).toEqual(['a', 'c']);
