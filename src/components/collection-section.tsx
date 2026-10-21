@@ -12,14 +12,23 @@ const TABS: { key: CollectionStatus; label: string }[] = [
   { key: 'doing', label: '在看' },
   { key: 'done', label: '看过' },
 ];
-/** 看过动辄上千条，按批渲染，避免首页一次挂上千张卡片 */
+/** 看过动辄上千条，按批渲染，避免一次挂上千张卡片 */
 const PAGE = 48;
-/** 各来源的界面差异集中在这里：豆瓣靠用户填 ID 绑定，NeoDB 由服务端 token 决定账号 */
-const SOURCE_UI: Record<CollectionSource, { label: string; bindable: boolean; emptyText: string }> = {
-  douban: { label: '豆瓣', bindable: true, emptyText: '这里还没有条目。若豆瓣上有标记，请确认「我看」已设为公开' },
-  neodb: { label: 'NeoDB', bindable: false, emptyText: '这里还没有条目（只同步电影与剧集）' },
+/** 各来源的界面差异集中在这里：豆瓣填公开主页链接，NeoDB 粘贴 Access Token */
+export const SOURCE_UI: Record<CollectionSource, { label: string; rebindLabel: string; emptyText: string }> = {
+  douban: { label: '豆瓣', rebindLabel: '更换账号', emptyText: '这里还没有条目。若豆瓣上有标记，请确认「我看」已设为公开' },
+  neodb: { label: 'NeoDB', rebindLabel: '更换 token', emptyText: '这里还没有条目（只同步电影与剧集）' },
 };
-const queryKey = (source: CollectionSource) => ['my-collection', source] as const;
+export const collectionQueryKey = (source: CollectionSource) => ['my-collection', source] as const;
+
+/** 片单数据：同步在服务端后台进行，期间轮询以刷新进度与结果 */
+export function useCollection(source: CollectionSource) {
+  return useQuery({
+    queryKey: collectionQueryKey(source),
+    queryFn: ({ signal }) => api.collection(source, signal),
+    refetchInterval: (q) => (q.state.data?.syncing ? 3000 : false),
+  });
+}
 
 function formatTime(ms: number): string {
   return new Date(ms).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -29,89 +38,118 @@ function subtitleOf(item: CollectionItem): string {
   return [item.year, item.markedAt.slice(0, 10)].filter(Boolean).join(' · ');
 }
 
-/**
- * 首页「我的豆瓣 / 我的 NeoDB」：同步自对应账号的想看 / 在看 / 看过，点卡片按片名搜资源。
- * NeoDB 未配置 NEODB_TOKEN 时整块隐藏。
- */
-export function CollectionSection({ onPick, source }: { onPick: (title: string) => void; source: CollectionSource }) {
-  const query = useQuery({
-    queryKey: queryKey(source),
-    queryFn: ({ signal }) => api.collection(source, signal),
-    // 同步在服务端后台进行，期间轮询以刷新进度与结果
-    refetchInterval: (q) => (q.state.data?.syncing ? 3000 : false),
-  });
+/** 片单页中一个来源的内容：未绑定显示导入引导，已绑定显示 想看 / 在看 / 看过，点卡片按片名搜资源 */
+export function CollectionPanel({ source, onPick }: { source: CollectionSource; onPick: (title: string) => void }) {
+  const query = useCollection(source);
 
-  if (query.isLoading) return null;
-  // 未登录由全局登录框处理，这里静默隐藏
-  if (query.error instanceof ApiError && query.error.status === 401) return null;
-  if (query.isError) {
-    return (
-      <Shell source={source}>
-        <p className="text-sm text-faint py-4">「我的{SOURCE_UI[source].label}」加载失败：{query.error.message}</p>
-      </Shell>
-    );
+  if (query.isLoading) return <p className="text-sm text-faint py-8 text-center">加载中…</p>;
+  // 未登录由全局登录框处理
+  if (query.error instanceof ApiError && query.error.status === 401) {
+    return <p className="text-sm text-faint py-8 text-center">登录后查看片单</p>;
   }
+  if (query.isError) return <p className="text-sm text-danger py-8">片单加载失败：{query.error.message}</p>;
+
   const data = query.data!;
-  if (!data.configured) return null;
-  if (!data.userId) {
-    return (
-      <Shell source={source}>
-        {SOURCE_UI[source].bindable ? (
-          <BindForm />
-        ) : data.bindError ? (
-          <p className="text-sm text-danger py-4">NeoDB 连接失败：{data.bindError}</p>
-        ) : (
-          <p className="text-sm text-faint py-4">正在连接 NeoDB 账号…</p>
-        )}
-      </Shell>
-    );
-  }
+  if (!data.userId) return <Onboarding source={source} data={data} />;
   return <CollectionView source={source} data={data} onPick={onPick} />;
 }
 
-function Shell({ source, children, actions }: { source: CollectionSource; children: React.ReactNode; actions?: React.ReactNode }) {
-  const title = `我的${SOURCE_UI[source].label}`;
+/* ---------- 导入引导 ---------- */
+
+function Step({ n, children }: { n: number; children: React.ReactNode }) {
   return (
-    <section aria-label={title} className="mb-8">
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <h2 className="text-base font-medium text-content">{title}</h2>
-        {actions}
-      </div>
-      {children}
-    </section>
+    <li className="flex gap-3">
+      <span className="shrink-0 w-6 h-6 rounded-full bg-accent text-on-accent text-xs flex items-center justify-center">{n}</span>
+      <div className="text-sm text-muted leading-relaxed pt-0.5">{children}</div>
+    </li>
   );
 }
 
-function BindForm({ initial = '', onDone }: { initial?: string; onDone?: () => void }) {
+function ExtLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="text-accent hover:underline">
+      {children}
+    </a>
+  );
+}
+
+function Onboarding({ source, data }: { source: CollectionSource; data: CollectionResponse }) {
+  return (
+    <div className="border border-line rounded-xl p-5 max-w-2xl">
+      {source === 'douban' ? (
+        <>
+          <h3 className="text-base font-medium text-content mb-1">导入豆瓣片单</h3>
+          <p className="text-sm text-faint mb-4">只需要你的豆瓣主页链接，不需要登录豆瓣。大约 1 分钟。</p>
+          <ol className="space-y-3 mb-5">
+            <Step n={1}>
+              打开 <ExtLink href="https://www.douban.com/mine/">我的豆瓣主页</ExtLink>（手机上可在豆瓣 App「我的 → 个人主页 → 分享 → 复制链接」），复制地址栏里的链接。
+            </Step>
+            <Step n={2}>
+              确认豆瓣「设置 → 隐私」中，「我看」对所有人公开。设为私密时这里读不到数据。
+            </Step>
+            <Step n={3}>把链接粘贴到下面，点「绑定」。之后会自动定时同步。</Step>
+          </ol>
+          <DoubanBindForm />
+        </>
+      ) : data.managedByEnv ? (
+        <>
+          <h3 className="text-base font-medium text-content mb-1">NeoDB 连接失败</h3>
+          <p className="text-sm text-danger">{data.bindError ?? '正在连接…'}</p>
+          <p className="text-sm text-faint mt-2">token 由服务器的 .env（NEODB_TOKEN）配置，请联系站点管理员更新。</p>
+        </>
+      ) : (
+        <>
+          <h3 className="text-base font-medium text-content mb-1">导入 NeoDB 片单</h3>
+          <p className="text-sm text-faint mb-4">NeoDB 需要一个访问令牌（token）来读取你的标记。大约 2 分钟。</p>
+          <ol className="space-y-3 mb-5">
+            <Step n={1}>
+              打开 <ExtLink href="https://neodb.social/account/login">neodb.social</ExtLink> 并登录。没有账号的话，可以直接用 Mastodon、邮箱或 Bluesky 登录，会自动创建。
+            </Step>
+            <Step n={2}>
+              登录后打开 <ExtLink href="https://neodb.social/developer/">NeoDB 开发者页面</ExtLink>，点「Test Access Token」展开，再点
+              「Generate」。token 只显示这一次，重新生成会让旧的失效。
+            </Step>
+            <Step n={3}>复制生成的 token，粘贴到下面，点「保存」。token 只保存在本站服务器上，不会再显示出来。</Step>
+          </ol>
+          {data.bindError && <p className="text-sm text-danger mb-3">上次连接失败：{data.bindError}</p>}
+          <NeodbTokenForm />
+        </>
+      )}
+    </div>
+  );
+}
+
+function useBind(source: CollectionSource, onDone?: () => void) {
   const queryClient = useQueryClient();
-  const [value, setValue] = useState(initial);
-  const bind = useMutation({
-    mutationFn: (v: string) => api.bindDouban(v),
+  return useMutation({
+    mutationFn: async (v: string): Promise<void> => {
+      await (source === 'douban' ? api.bindDouban(v) : api.bindNeodb(v));
+    },
     onSuccess: () => {
       onDone?.();
-      return queryClient.invalidateQueries({ queryKey: queryKey('douban') });
+      return queryClient.invalidateQueries({ queryKey: collectionQueryKey(source) });
     },
   });
+}
 
+function DoubanBindForm({ initial = '', onDone }: { initial?: string; onDone?: () => void }) {
+  const [value, setValue] = useState(initial);
+  const bind = useBind('douban', onDone);
   return (
     <form
-      className="border border-dashed border-line rounded-xl p-4 max-w-lg"
       onSubmit={(e) => {
         e.preventDefault();
         bind.mutate(value);
       }}
     >
-      <p className="text-sm text-muted mb-3">
-        填写豆瓣个人主页链接或数字 ID，同步你的想看 / 在看 / 看过。需在豆瓣「设置 → 隐私」中将「我看」设为公开。
-      </p>
       <div className="flex gap-2">
         <input
-          className="input flex-1"
+          className="input flex-1 min-w-0"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder="https://www.douban.com/people/xxxx/"
         />
-        <button type="submit" className="btn-primary" disabled={bind.isPending || !value.trim()}>
+        <button type="submit" className="btn-primary shrink-0" disabled={bind.isPending || !value.trim()}>
           {bind.isPending ? '绑定中…' : '绑定'}
         </button>
       </div>
@@ -119,6 +157,36 @@ function BindForm({ initial = '', onDone }: { initial?: string; onDone?: () => v
     </form>
   );
 }
+
+function NeodbTokenForm({ onDone }: { onDone?: () => void }) {
+  const [value, setValue] = useState('');
+  const bind = useBind('neodb', onDone);
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        bind.mutate(value);
+      }}
+    >
+      <div className="flex gap-2">
+        <input
+          className="input flex-1 min-w-0"
+          type="password"
+          autoComplete="off"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="粘贴 NeoDB token"
+        />
+        <button type="submit" className="btn-primary shrink-0" disabled={bind.isPending || !value.trim()}>
+          {bind.isPending ? '校验中…' : '保存'}
+        </button>
+      </div>
+      {bind.isError && <p className="mt-2 text-sm text-danger">{bind.error.message}</p>}
+    </form>
+  );
+}
+
+/* ---------- 已绑定的片单 ---------- */
 
 function CollectionView({ source, data, onPick }: { source: CollectionSource; data: CollectionResponse; onPick: (title: string) => void }) {
   const queryClient = useQueryClient();
@@ -128,43 +196,51 @@ function CollectionView({ source, data, onPick }: { source: CollectionSource; da
 
   const sync = useMutation({
     mutationFn: () => api.syncCollection(source),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKey(source) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: collectionQueryKey(source) }),
   });
 
   const items = data.lists[tab];
   const last = data.lastResult;
   const syncing = data.syncing || sync.isPending;
-
-  const status = syncing ? (
-    <span className="text-muted">同步中…</span>
-  ) : last ? (
-    <span className={last.ok ? 'text-faint' : 'text-danger'} title={last.error}>
-      上次同步 {formatTime(last.at)}
-      {last.ok ? '' : ` · 失败：${last.error}`}
-    </span>
-  ) : null;
+  const ui = SOURCE_UI[source];
 
   return (
-    <Shell
-      source={source}
-      actions={
-        <div className="flex items-center gap-2 text-xs min-w-0">
-          <span className="truncate">{status}</span>
-          <button className="btn-ghost btn-sm shrink-0" disabled={syncing} onClick={() => sync.mutate()}>
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3 text-xs">
+        <span className="text-faint truncate min-w-0">
+          账号 {data.userId}
+          {' · '}
+          {syncing ? (
+            <span className="text-muted">同步中…</span>
+          ) : last ? (
+            <span className={last.ok ? '' : 'text-danger'} title={last.error}>
+              上次同步 {formatTime(last.at)}
+              {last.ok ? '' : ` · 失败：${last.error}`}
+            </span>
+          ) : null}
+        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          <button className="btn-ghost btn-sm" disabled={syncing} onClick={() => sync.mutate()}>
             立即同步
           </button>
-          {/* NeoDB 账号由 token 决定，没有「更换 ID」 */}
-          {SOURCE_UI[source].bindable && (
-            <button className="btn-ghost btn-sm shrink-0" onClick={() => setEditing((v) => !v)}>
-              {editing ? '取消' : '更换 ID'}
+          {!data.managedByEnv && (
+            <button className="btn-ghost btn-sm" onClick={() => setEditing((v) => !v)}>
+              {editing ? '取消' : ui.rebindLabel}
             </button>
           )}
         </div>
-      }
-    >
+      </div>
+
       {editing && (
-        <div className="mb-4">
-          <BindForm initial={data.userId ?? ''} onDone={() => setEditing(false)} />
+        <div className="mb-4 max-w-lg">
+          {source === 'douban' ? (
+            <DoubanBindForm initial={data.userId ?? ''} onDone={() => setEditing(false)} />
+          ) : (
+            <>
+              <p className="text-xs text-faint mb-2">换成另一个账号的 token 会清空当前片单并重新同步。</p>
+              <NeodbTokenForm onDone={() => setEditing(false)} />
+            </>
+          )}
         </div>
       )}
 
@@ -188,11 +264,7 @@ function CollectionView({ source, data, onPick }: { source: CollectionSource; da
 
       {items.length === 0 ? (
         <p className="text-center text-sm text-faint py-8">
-          {syncing
-            ? `正在从${SOURCE_UI[source].label}同步…`
-            : last?.ok
-              ? SOURCE_UI[source].emptyText
-              : '暂无数据，可点击「立即同步」'}
+          {syncing ? `正在从${ui.label}同步…` : last?.ok ? ui.emptyText : '暂无数据，可点击「立即同步」'}
         </p>
       ) : (
         <>
@@ -210,6 +282,6 @@ function CollectionView({ source, data, onPick }: { source: CollectionSource; da
           )}
         </>
       )}
-    </Shell>
+    </div>
   );
 }

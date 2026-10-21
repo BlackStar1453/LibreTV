@@ -213,6 +213,14 @@ export const api = {
       body: JSON.stringify({ userId }),
     }),
 
+  /** 保存 NeoDB token（服务端先校验，响应不回传 token） */
+  bindNeodb: (token: string) =>
+    request<{ ok: boolean; bindError: string | null }>('/api/collection?source=neodb', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    }),
+
   syncCollection: (source: CollectionSource) =>
     request<{ syncing: boolean }>(`/api/collection/sync?source=${source}`, { method: 'POST' }),
 

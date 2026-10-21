@@ -5,8 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Header } from '@/components/header';
 import { RecommendSection } from '@/components/douban-section';
-import { CollectionSection } from '@/components/collection-section';
-import { COLLECTION_SOURCES } from '@/lib/collection/types';
+import { CollectionStrip } from '@/components/collection-strip';
 import { DetailModal } from '@/components/detail-modal';
 import { AggregatedCard, aggregateResults } from '@/components/video-card';
 import { useAppStore, resolveSource, isInDisabledSubscription, isSourceDisabled } from '@/lib/store';
@@ -366,18 +365,15 @@ function HomeContent() {
           </section>
         )}
 
-        {/* 我的豆瓣 / 我的 NeoDB（有搜索时隐藏；NeoDB 未配置 token 时组件自行隐藏） */}
-        {!urlQuery &&
-          COLLECTION_SOURCES.map((source) => (
-            <CollectionSection
-              key={source}
-              source={source}
-              onPick={(title) => {
-                setInput(title);
-                runSearch(title);
-              }}
-            />
-          ))}
+        {/* 片单入口：在看横排 / 未导入时的导入提示（有搜索时隐藏） */}
+        {!urlQuery && (
+          <CollectionStrip
+            onPick={(title) => {
+              setInput(title);
+              runSearch(title);
+            }}
+          />
+        )}
 
         {/* 首页推荐（有搜索时隐藏） */}
         {!urlQuery && (
