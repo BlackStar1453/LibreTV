@@ -12,6 +12,9 @@ const state = vi.hoisted(() => ({
   authed: true,
   userId: null as string | null,
   syncCalls: [] as string[],
+  sources: [] as string[],
+  neodbConfigured: false,
+  ensureCalls: 0,
 }));
 
 vi.mock('@/lib/api-guard', () => ({
@@ -20,7 +23,11 @@ vi.mock('@/lib/api-guard', () => ({
 }));
 
 vi.mock('@/lib/collection/server', () => ({
-  getCollectionService: () => ({
+  isNeodbConfigured: () => state.neodbConfigured,
+  ensureNeodbBound: async () => {
+    state.ensureCalls++;
+  },
+  getCollectionService: (source = 'douban') => (state.sources.push(source), {
     getState: async () => ({ userId: state.userId, lists: { wish: [], doing: [], done: [] }, lastAttemptAt: null, lastFullAt: null, lastResult: null }),
     isSyncing: () => false,
     setUserId: async (id: string) => {
@@ -39,6 +46,9 @@ beforeEach(() => {
   state.authed = true;
   state.userId = null;
   state.syncCalls = [];
+  state.sources = [];
+  state.neodbConfigured = false;
+  state.ensureCalls = 0;
 });
 
 const put = (body: unknown) =>
@@ -79,6 +89,47 @@ describe('/api/collection', () => {
     state.userId = 'u1';
     const res = await POST(new Request('http://x/api/collection/sync', { method: 'POST' }));
     expect(res.status).toBe(202);
+    expect(state.syncCalls).toEqual(['full']);
+  });
+
+  it('GET 豆瓣恒为 configured，不触发 NeoDB 绑定', async () => {
+    const res = await GET(new Request('http://x/api/collection'));
+    expect(await res.json()).toMatchObject({ configured: true });
+    expect(state.sources).toEqual(['douban']);
+    expect(state.ensureCalls).toBe(0);
+  });
+
+  it('GET ?source=neodb 先确保绑定，再读 NeoDB 的状态', async () => {
+    state.neodbConfigured = true;
+    const res = await GET(new Request('http://x/api/collection?source=neodb'));
+    expect(await res.json()).toMatchObject({ configured: true });
+    expect(state.ensureCalls).toBe(1);
+    expect(state.sources).toEqual(['neodb']);
+  });
+
+  it('GET ?source=neodb 未配置 token 时 configured=false', async () => {
+    const res = await GET(new Request('http://x/api/collection?source=neodb'));
+    expect(await res.json()).toMatchObject({ configured: false });
+  });
+
+  it('未知 source 返回 400', async () => {
+    expect((await GET(new Request('http://x/api/collection?source=imdb'))).status).toBe(400);
+    expect((await POST(new Request('http://x/api/collection/sync?source=imdb', { method: 'POST' }))).status).toBe(400);
+  });
+
+  it('PUT 不支持 NeoDB（靠 token 绑定）', async () => {
+    const res = await PUT(
+      new Request('http://x/api/collection?source=neodb', { method: 'PUT', body: JSON.stringify({ userId: 'x' }) })
+    );
+    expect(res.status).toBe(400);
+    expect(state.userId).toBeNull();
+  });
+
+  it('POST /sync?source=neodb 同步 NeoDB', async () => {
+    state.userId = 'yao';
+    const res = await POST(new Request('http://x/api/collection/sync?source=neodb', { method: 'POST' }));
+    expect(res.status).toBe(202);
+    expect(state.sources).toContain('neodb');
     expect(state.syncCalls).toEqual(['full']);
   });
 });

@@ -3,6 +3,9 @@
  * 数据源（豆瓣，日后 NeoDB）只需实现 CollectionProvider，界面与同步逻辑不感知来源。
  */
 
+/** 收藏来源：豆瓣（填公开 ID）/ NeoDB（.env 配 token），各自独立同步与存储 */
+export type CollectionSource = 'douban' | 'neodb';
+
 /** 想看 / 在看 / 看过 */
 export type CollectionStatus = 'wish' | 'doing' | 'done';
 
@@ -59,4 +62,14 @@ export interface CollectionState {
 /** GET /api/collection 响应 */
 export interface CollectionResponse extends CollectionState {
   syncing: boolean;
+  /** 数据源是否可用：豆瓣恒为 true；NeoDB 取决于是否配置了 NEODB_TOKEN */
+  configured: boolean;
+}
+
+export const COLLECTION_SOURCES: readonly CollectionSource[] = ['douban', 'neodb'];
+
+/** 解析请求的 ?source=，缺省为豆瓣；非法值返回 null */
+export function parseCollectionSource(req: Request): CollectionSource | null {
+  const raw = new URL(req.url).searchParams.get('source') ?? 'douban';
+  return (COLLECTION_SOURCES as readonly string[]).includes(raw) ? (raw as CollectionSource) : null;
 }
