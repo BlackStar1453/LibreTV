@@ -365,15 +365,18 @@ function HomeContent() {
           </section>
         )}
 
-        {/* 我的豆瓣（有搜索时隐藏） */}
-        {!urlQuery && (
-          <MyDoubanSection
-            onPick={(title) => {
-              setInput(title);
-              runSearch(title);
-            }}
-          />
-        )}
+        {/* 我的豆瓣 / 我的 NeoDB（有搜索时隐藏；NeoDB 未配置 token 时组件自行隐藏） */}
+        {!urlQuery &&
+          (['douban', 'neodb'] as const).map((source) => (
+            <MyDoubanSection
+              key={source}
+              source={source}
+              onPick={(title) => {
+                setInput(title);
+                runSearch(title);
+              }}
+            />
+          ))}
 
         {/* 首页推荐（有搜索时隐藏） */}
         {!urlQuery && (
