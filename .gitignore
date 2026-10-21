@@ -12,3 +12,5 @@ vitest-results.json
 .zcode/
 .codebuddy/
 generated-images/
+# 服务端运行时数据（我的豆瓣同步结果等）
+data/

@@ -69,10 +69,10 @@ describe('extractDoubanUserId', () => {
 
 describe('createDoubanProvider', () => {
   it('按状态与偏移请求 rexxar 接口', async () => {
-    const fetchJson = vi.fn(async () => ({ total: 0, interests: [] }));
+    const fetchJson = vi.fn<(url: string) => Promise<unknown>>(async () => ({ total: 0, interests: [] }));
     const provider = createDoubanProvider(fetchJson);
     await provider.fetchPage('157618520', 'done', 50);
-    const url = new URL(fetchJson.mock.calls[0][0] as string);
+    const url = new URL(fetchJson.mock.calls[0][0]);
     expect(url.pathname).toBe('/rexxar/api/v2/user/157618520/interests');
     expect(url.searchParams.get('status')).toBe('done');
     expect(url.searchParams.get('type')).toBe('movie');
@@ -81,11 +81,11 @@ describe('createDoubanProvider', () => {
   });
 
   it('wish/doing 映射为豆瓣的 mark/doing', async () => {
-    const fetchJson = vi.fn(async () => ({ total: 0, interests: [] }));
+    const fetchJson = vi.fn<(url: string) => Promise<unknown>>(async () => ({ total: 0, interests: [] }));
     const provider = createDoubanProvider(fetchJson);
     await provider.fetchPage('u', 'wish', 0);
     await provider.fetchPage('u', 'doing', 0);
-    expect(new URL(fetchJson.mock.calls[0][0] as string).searchParams.get('status')).toBe('mark');
-    expect(new URL(fetchJson.mock.calls[1][0] as string).searchParams.get('status')).toBe('doing');
+    expect(new URL(fetchJson.mock.calls[0][0]).searchParams.get('status')).toBe('mark');
+    expect(new URL(fetchJson.mock.calls[1][0]).searchParams.get('status')).toBe('doing');
   });
 });
