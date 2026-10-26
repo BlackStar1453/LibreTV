@@ -75,7 +75,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
         window.title = "LibreTV"
-        window.contentView = webView
+        // webView 不能直接当 contentView：网页全屏退出时 WebKit 把它放回原父视图，
+        // 父视图若是窗口框架，contentView 会变成 nil，标题栏错位、网页不再跟随窗口缩放
+        let container = NSView()
+        webView.frame = container.bounds
+        webView.autoresizingMask = [.width, .height]
+        container.addSubview(webView)
+        window.contentView = container
         window.delegate = self
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.fullScreenPrimary]
