@@ -199,6 +199,7 @@ PASSWORD=your-password npm start   # 监听 8080
 ```bash
 npm install
 PASSWORD=dev-password npm run dev   # http://localhost:8080
+npm run dev:noauth                  # 免密开发服务器 http://localhost:3000，可与 8080 常驻服务并存（见 docs/adr/0002）
 npm test                            # 核心库单元测试（cms-parser / m3u8 / ssrf）
 npm run typecheck
 ```

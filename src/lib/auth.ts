@@ -61,8 +61,17 @@ export function checkPassword(input: string): boolean {
   return crypto.timingSafeEqual(a, b);
 }
 
-/** 从请求 Cookie 中解析会话 */
+/**
+ * 开发免密模式（`npm run dev:noauth`）：仅 `next dev` 且显式设置 LIBRETV_DEV_NO_AUTH=1 时生效。
+ * 生产构建会把 NODE_ENV 内联为 'production'，`next start` 不可能命中。
+ */
+function isDevNoAuth(): boolean {
+  return process.env.NODE_ENV === 'development' && process.env.LIBRETV_DEV_NO_AUTH === '1';
+}
+
+/** 从请求 Cookie 中解析会话（所有鉴权入口都经过这里，开发免密模式直接放行） */
 export function sessionFromCookieHeader(cookieHeader: string | null): boolean {
+  if (isDevNoAuth()) return true;
   if (!cookieHeader) return false;
   const cookies = cookieHeader.split(';');
   for (const c of cookies) {

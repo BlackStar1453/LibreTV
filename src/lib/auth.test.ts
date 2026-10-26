@@ -96,6 +96,29 @@ describe('sessionFromCookieHeader', () => {
   });
 });
 
+describe('开发免密模式（dev:noauth）', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('next dev 且显式开启时，无 Cookie 也视为已登录', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('LIBRETV_DEV_NO_AUTH', '1');
+    expect(sessionFromCookieHeader(null)).toBe(true);
+  });
+
+  it('生产环境即使设置了开关也不放行', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('LIBRETV_DEV_NO_AUTH', '1');
+    expect(sessionFromCookieHeader(null)).toBe(false);
+  });
+
+  it('开发环境未设置开关时照常要求登录', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    expect(sessionFromCookieHeader(null)).toBe(false);
+  });
+});
+
 describe('checkRateLimit', () => {
   afterEach(() => {
     clearRateLimit('1.2.3.4');
